@@ -17,6 +17,7 @@
 #include <fbm/core/BrownianNoise.h>
 #include <fbm/core/IKernel.h>
 #include <fbm/core/VolterraKernelStub.h>
+#include <fbm/core/VolterraKernelPowerLaw.h>
 #include <fbm/core/VolterraNoiseGEMM.h>
 #include <fbm/core/RB_Factor.h>
 
@@ -222,7 +223,7 @@ static void runKernelTest(const CLIArgs& args) {
     const std::size_t N = args.n_steps;
     const double dt = args.T / static_cast<double>(N);
 
-    fbm::core::VolterraKernelStub kernel;
+    fbm::core::VolterraKernelPowerLaw kernel;
     std::vector<double> K_small(N * N, 0.0);
 
     const auto t0 = std::chrono::high_resolution_clock::now();
@@ -262,7 +263,7 @@ static void runRBNoiseTest(const CLIArgs& args) {
     const double dt = args.T / static_cast<double>(N);
 
     // Build kernel
-    fbm::core::VolterraKernelStub kernel;
+    fbm::core::VolterraKernelPowerLaw kernel;
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
@@ -302,9 +303,15 @@ static void runRBNoiseTest(const CLIArgs& args) {
       }
       const double mean = sum / static_cast<double>(m);
       const double var_hat = (sumsq - static_cast<double>(m) * mean * mean) / static_cast<double>(m - 1);
-      const double theory = time[idx + 1]; // for H=0.5, Var(B_t)=t
-      const double err = std::abs(var_hat - theory);
-      std::cout << "t = " << time[idx + 1] << ", Var_hat = " << var_hat << ", Error = " << err << "\n";
+      const double t = time[idx + 1];
+      const double theory = std::pow(t, 2.0 * args.H); // Var(B_H(t)) = t^(2H)
+      const double abs_err = std::abs(var_hat - theory);
+      const double rel_err = abs_err / std::max(theory, 1e-16);
+      std::cout << "t = " << t
+                << ", Var_hat = " << var_hat
+                << ", Theory = " << theory
+                << ", AbsErr = " << abs_err
+                << ", RelErr = " << rel_err << "\n";
     }
 
     // If antithetic is enabled, compute variance reduction ratio at last index
@@ -355,7 +362,7 @@ static void runRBFactor(const CLIArgs& args) {
     const double dt = args.T / static_cast<double>(N);
 
     // Build kernel
-    fbm::core::VolterraKernelStub kernel;
+    fbm::core::VolterraKernelPowerLaw kernel;
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
@@ -425,6 +432,8 @@ int main(int argc, char* argv[]) {
     runBlackScholes(args);
   } else if (args.command == "kernel") {
     runKernelTest(args);
+  } else if (args.command == "rb-noise") {
+    runRBNoiseTest(args);
   } else if (args.command == "rb-factor") {
     runRBFactor(args);
   }
