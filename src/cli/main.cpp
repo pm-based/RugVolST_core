@@ -18,6 +18,7 @@
 #include <fbm/core/IKernel.h>
 #include <fbm/core/VolterraKernelStub.h>
 #include <fbm/core/VolterraNoiseGEMM.h>
+#include <fbm/core/RB_Factor.h>
 
 #if defined(FBM_USE_OPENMP)
 #include <omp.h>
@@ -38,6 +39,8 @@ struct CLIArgs {
   bool use_antithetic = false;
   int threads = 0; // 0 = library default
   double rho = 0.0; // correlation between dW and dB
+  double eta = 1.5; // volatility of volatility for rb-factor
+  double xi0 = 0.04; // initial variance level for rb-factor
 };
 
 static void printUsage() {
@@ -45,9 +48,8 @@ static void printUsage() {
   std::cout << "Commands:\n";
   std::cout << "  bs            Run Black–Scholes simulation\n";
   std::cout << "  kernel        Build and summarize Volterra kernel\n";
-  std::cout << "  rb-noise      Generate Volterra noise BH = dB @ K\n\n";
-
-  std::cout << "Common options:\n";
+  std::cout << "  rb-noise      Generate Volterra noise BH = dB @ K\n";
+  std::cout << "  rb-factor     Generate Rough Bergomi variance factors\n\n";
   std::cout << "  --npaths N     Number of paths (default varies by command)\n";
   std::cout << "  --nsteps N     Number of time steps (default varies by command)\n";
   std::cout << "  --T VALUE      Time horizon (default: 1.0)\n";
@@ -59,16 +61,17 @@ static void printUsage() {
   std::cout << "  --mu VALUE     Drift (default: 0.0)\n";
   std::cout << "  --sigma VALUE  Volatility (default: 0.2)\n\n";
 
-  std::cout << "Kernel / RB-noise options:\n";
-  std::cout << "  --H VALUE      Hurst parameter in (0,1) (default: 0.3 for kernel, 0.5 for rb-noise)\n";
-  std::cout << "  --quad N       Quadrature points (default: 64 for kernel, 16 for rb-noise)\n\n";
-
-  std::cout << "RB-noise specific options:\n";
+  std::cout << "Kernel / RB-noise / RB-factor options:\n";
+  std::cout << "  --H VALUE      Hurst parameter in (0,1) (default: 0.3 for kernel, 0.5 for others)\n";
+  std::cout << "  --quad N       Quadrature points (default: 64 for kernel, 16 for others)\n";
   std::cout << "  --antithetic   Use antithetic variates for variance reduction (default: off)\n";
   std::cout << "  --rho VALUE    Correlation between dW and dB in (-1,1) (default: 0.0)\n";
 #if defined(FBM_USE_OPENMP)
   std::cout << "  --threads N    Number of OpenMP threads (default: 0 = library default)\n";
 #endif
+  std::cout << "\nRB-factor specific options:\n";
+  std::cout << "  --eta VALUE    Volatility of volatility parameter (default: 1.5)\n";
+  std::cout << "  --xi0 VALUE    Initial variance level (default: 0.04)\n";
 }
 
 static CLIArgs parseArgs(int argc, char* argv[]) {
@@ -80,7 +83,7 @@ static CLIArgs parseArgs(int argc, char* argv[]) {
   }
 
   const std::string command = argv[1];
-  if (command != "bs" && command != "kernel" && command != "rb-noise") {
+  if (command != "bs" && command != "kernel" && command != "rb-noise" && command != "rb-factor") {
     std::cerr << "Error: Unknown command '" << command << "'\n";
     args.show_help = true;
     return args;
@@ -95,6 +98,14 @@ static CLIArgs parseArgs(int argc, char* argv[]) {
     args.n_steps = 256;
     args.H = 0.5;
     args.quad_points = 16;
+    args.seed = 7;
+  } else if (command == "rb-factor") {
+    args.n_paths = 20000;
+    args.n_steps = 256;
+    args.H = 0.5;
+    args.quad_points = 16;
+    args.eta = 1.5;
+    args.xi0 = 0.04;
     args.seed = 7;
   }
 
@@ -128,6 +139,10 @@ static CLIArgs parseArgs(int argc, char* argv[]) {
       args.threads = std::stoi(argv[++i]);
     } else if (arg == "--rho" && i + 1 < argc) {
       args.rho = std::stod(argv[++i]);
+    } else if (arg == "--eta" && i + 1 < argc) {
+      args.eta = std::stod(argv[++i]);
+    } else if (arg == "--xi0" && i + 1 < argc) {
+      args.xi0 = std::stod(argv[++i]);
     } else {
       std::cerr << "Error: Unknown or incomplete argument '" << arg << "'\n";
       args.show_help = true;
@@ -274,7 +289,7 @@ static void runRBNoiseTest(const CLIArgs& args) {
     std::cout << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n";
     std::cout << "Rho: " << args.rho << "\n";
 #if defined(FBM_USE_OPENMP)
-    std::cout << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n";
+    std::cout << "Threads: " << omp_get_max_threads() << "\n";
 #endif
     std::cout << "\nElapsed time: " << ms << " ms\n\n";
 
@@ -328,6 +343,69 @@ static void runRBNoiseTest(const CLIArgs& args) {
   }
 }
 
+static void runRBFactor(const CLIArgs& args) {
+  try {
+    if (args.n_steps < 2) throw std::invalid_argument("nsteps must be at least 2");
+    if (args.T <= 0.0) throw std::invalid_argument("T must be positive");
+    if (args.H <= 0.0 || args.H >= 1.0) throw std::invalid_argument("H must be in (0,1)");
+    if (args.quad_points < 1) throw std::invalid_argument("quad_points must be at least 1");
+
+    auto time = make_uniform_time(args.n_steps, args.T);
+    const std::size_t N = args.n_steps;
+    const double dt = args.T / static_cast<double>(N);
+
+    // Build kernel
+    fbm::core::VolterraKernelStub kernel;
+    std::vector<double> K_small(N * N, 0.0);
+    kernel.build(time, args.H, args.quad_points, K_small);
+
+    // Generate Volterra noise (BH = dB @ K)
+    fbm::core::VolterraNoiseGEMM noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
+    const std::size_t m = args.n_paths;
+    std::vector<double> dB(m * N), dW(m * N), BH(m * N);
+    noise_gen.sample(dB, dW, BH, m, N, dt, args.seed);
+
+    // Compute Rough Bergomi variance factors
+    fbm::core::RB_Factor rb_factor;
+    std::vector<double> XI(m * N);
+
+    const auto t0 = std::chrono::high_resolution_clock::now();
+    rb_factor.compute(std::span<const double>(BH), std::span<const double>(time),
+                      m, N, args.H, args.xi0, args.eta, std::span<double>(XI));
+    const auto t1 = std::chrono::high_resolution_clock::now();
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+    // Sample means at a few indices
+    std::vector<std::size_t> idxs{N / 4, N / 2, N - 1};
+
+    std::cout << std::fixed << std::setprecision(6);
+    std::cout << "Rough Bergomi Factor Generation Results\n";
+    std::cout << "======================================\n";
+    std::cout << "Paths: " << m << ", Steps: " << N << "\n";
+    std::cout << "T: " << args.T << ", H: " << args.H << ", dt: " << dt << "\n";
+    std::cout << "Seed: " << args.seed << "\n";
+    std::cout << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n";
+    std::cout << "Rho: " << args.rho << "\n";
+    std::cout << "Eta: " << args.eta << "\n";
+    std::cout << "Xi0: " << args.xi0 << "\n";
+    std::cout << "\nElapsed time: " << ms << " ms\n\n";
+
+    for (std::size_t idx : idxs) {
+      double sum = 0.0;
+      for (std::size_t p = 0; p < m; ++p) {
+        sum += XI[p * N + idx];
+      }
+      const double mean = sum / static_cast<double>(m);
+      const double theory = args.xi0; // E[xi_t] = xi0 due to drift adjustment
+      const double err = std::abs(mean - theory);
+      std::cout << "t = " << time[idx + 1] << ", Mean = " << mean << ", Error = " << err << "\n";
+    }
+  } catch (const std::exception& e) {
+    std::cerr << "Error: " << e.what() << '\n';
+    std::exit(1);
+  }
+}
+
 int main(int argc, char* argv[]) {
   const CLIArgs args = parseArgs(argc, argv);
 
@@ -347,8 +425,8 @@ int main(int argc, char* argv[]) {
     runBlackScholes(args);
   } else if (args.command == "kernel") {
     runKernelTest(args);
-  } else if (args.command == "rb-noise") {
-    runRBNoiseTest(args);
+  } else if (args.command == "rb-factor") {
+    runRBFactor(args);
   }
 
   return 0;

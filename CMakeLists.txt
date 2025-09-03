@@ -22,6 +22,7 @@ add_library(fbm_core
         src/core/BrownianNoise.cpp
         src/core/VolterraKernelStub.cpp
         src/core/VolterraNoiseGEMM.cpp
+        src/core/RB_Factor.cpp
 )
 
 target_include_directories(fbm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
@@ -67,6 +68,7 @@ if(FBM_BUILD_TESTS)
             tests/test_noise.cpp
             tests/test_antithetic.cpp
             tests/test_corr.cpp
+            tests/test_rb_factor.cpp
             third_party/catch2/catch_amalgamated.cpp
     )
     target_link_libraries(fbm_tests PRIVATE fbm_core)
