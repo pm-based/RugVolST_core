@@ -20,6 +20,8 @@ add_library(fbm_core
         src/core/Simulator.cpp
         src/core/GBM_Euler.cpp
         src/core/BrownianNoise.cpp
+        src/core/VolterraKernelStub.cpp
+        src/core/VolterraNoiseGEMM.cpp
 )
 
 target_include_directories(fbm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)
@@ -54,6 +56,25 @@ endif()
 add_executable(fbm_cli src/cli/main.cpp)
 target_link_libraries(fbm_cli PRIVATE fbm_core)
 target_include_directories(fbm_cli PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# Tests
+option(FBM_BUILD_TESTS "Build tests" ON)
+if(FBM_BUILD_TESTS)
+    enable_testing()
+    add_executable(fbm_tests
+            tests/test_bs.cpp
+            tests/test_kernel.cpp
+            tests/test_noise.cpp
+            tests/test_antithetic.cpp
+            tests/test_corr.cpp
+            third_party/catch2/catch_amalgamated.cpp
+    )
+    target_link_libraries(fbm_tests PRIVATE fbm_core)
+    target_include_directories(fbm_tests PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/third_party)
+    add_test(NAME fbm_tests COMMAND fbm_tests)
+endif()
 
 # Install
 install(TARGETS fbm_core fbm_cli
