@@ -7,32 +7,34 @@ namespace fbm::core {
 
     /// RoughBergomiFactor
     /// ------------------
-    /// Calcola i fattori di varianza xi_t su griglia uniforme per il modello Rough Bergomi.
+    /// Computes variance factors Xi on a uniform time grid for the rough Bergomi model.
     ///
-    /// Formula per i times t_{i+1}, i=0..N-1:
-    ///   xi_t[i] = xi0(t_{i+1}) * exp( eta * BH_{t_{i+1}} - 0.5 * eta^2 * t_{i+1}^{2H} )
-    /// dove BH_{t} è la fBM (livelli). L’API accetta dBH (incrementi) e ricostruisce i livelli.
+    /// Convention:
+    /// - Input BH is the **level** of fractional Brownian motion at t_1..t_N (path-major, size m*N).
+    /// - If a term-structure xi0(t) is provided, its size can be N   (values at t_1..t_N)
+    ///   or N+1 (values at t_0..t_N; the value at t_0 is ignored).
     ///
-    /// Convenzioni I/O (row-major per path):
-    ///   - dBH:  (m_paths * N)  incrementi fBM per passo
-    ///   - time: (N+1)          griglia uniforme con time[0] = 0
-    ///   - XI:   (m_paths * N)  output ai tempi t_1..t_N
+    /// Formula at times t_{i+1}, i = 0..N-1:
+    ///   Xi[i] = xi0(t_{i+1}) * exp( eta * BH[i] - 0.5 * eta^2 * t_{i+1}^{2H} )
+    ///
+    /// where H ∈ (0,1), eta ≥ 0, and E[exp(eta * BH_t - 0.5 * eta^2 * t^{2H})] = 1,
+    /// hence E[Xi_t] = xi0(t) by construction.
     class RoughBergomiFactor {
     public:
-        /// Versione con curva xi0(t) fornita su t_0..t_N (N+1 valori).
-        /// Usa soltanto t_1..t_N per costruire XI.
-        void compute(std::span<const double> dBH,
+        /// Term-structure overload: xi0(t) provided on either t_1..t_N (size N)
+        /// or t_0..t_N (size N+1; t_0 value is ignored).
+        void compute(std::span<const double> BH,
                      std::span<const double> time,
                      std::size_t m_paths, std::size_t N,
                      double H, std::span<const double> xi0t, double eta,
-                     std::span<double> XI) const;
+                     std::span<double> Xi) const;
 
-        /// Overload con xi0 costante.
-        void compute(std::span<const double> dBH,
+        /// Constant xi0 overload.
+        void compute(std::span<const double> BH,
                      std::span<const double> time,
                      std::size_t m_paths, std::size_t N,
                      double H, double xi0, double eta,
-                     std::span<double> XI) const;
+                     std::span<double> Xi) const;
     };
 
 } // namespace fbm::core

@@ -349,38 +349,25 @@ static void runRBNoiseTest(const CLIArgs& args) {
 
 static void runRBFactor(const CLIArgs& args) {
   try {
-    if (args.n_steps < 2) throw std::invalid_argument("nsteps must be at least 2");
-    if (args.T <= 0.0) throw std::invalid_argument("T must be positive");
-    if (args.H <= 0.0 || args.H >= 1.0) throw std::invalid_argument("H must be in (0,1)");
-    if (args.quad_points < 1) throw std::invalid_argument("quad_points must be at least 1");
-
-    auto time = make_uniform_time(args.n_steps, args.T);
     const std::size_t N = args.n_steps;
     const double dt = args.T / static_cast<double>(N);
 
-    // Build kernel
+    // Build time grid
+    std::vector<double> time(N + 1);
+    for (std::size_t i = 0; i <= N; ++i) time[i] = dt * double(i);
+
+    // Build power-law kernel
     fbm::core::VolterraKernelPowerLaw kernel;
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
-    // Generate Volterra noise (BH levels)
-    fbm::core::VolterraNoise noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
+    // Volterra noise -> BH (levels)
+    fbm::core::VolterraNoise noise(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
     const std::size_t m = args.n_paths;
     std::vector<double> dB(m * N), dW(m * N), BH(m * N);
-    noise_gen.sample(dB, dW, BH, m, N, dt, args.seed);
+    noise.sample(dB, dW, BH, m, N, dt, args.seed);
 
-    // Convert BH levels -> increments dBH
-    std::vector<double> dBH(m * N);
-    for (std::size_t p = 0; p < m; ++p) {
-      double prev = 0.0;
-      for (std::size_t i = 0; i < N; ++i) {
-        const double curr = BH[p * N + i];
-        dBH[p * N + i] = curr - prev;
-        prev = curr;
-      }
-    }
-
-    // xi0(t) curve on grid t_0..t_N (N+1 values)
+    // xi0(t) term-structure on t_0..t_N (N+1 values)
     std::vector<double> xi0t(N + 1, 0.0);
     for (std::size_t i = 0; i <= N; ++i) {
       const double t = time[i];
@@ -388,100 +375,79 @@ static void runRBFactor(const CLIArgs& args) {
               + args.beta1 * std::exp(-t / args.tau1)
               + args.beta2 * (t / args.tau2) * std::exp(-t / args.tau2);
     }
-
-    // Decide constant vs curve
     const bool use_curve = (std::abs(args.beta1) > 0.0) || (std::abs(args.beta2) > 0.0) || (args.beta0 != args.xi0);
 
-    // Compute Rough Bergomi variance factors
-    fbm::core::RoughBergomiFactor rb_factor;
-    std::vector<double> XI(m * N);
+    // Compute variance factors Xi from BH (levels)
+    fbm::core::RoughBergomiFactor rb;
+    std::vector<double> Xi(m * N);
 
     const auto t0 = std::chrono::high_resolution_clock::now();
     if (use_curve) {
-      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
-                        m, N, args.H, std::span<const double>(xi0t),
-                        args.eta, std::span<double>(XI));
+      rb.compute(std::span<const double>(BH), std::span<const double>(time),
+                 m, N, args.H, std::span<const double>(xi0t), args.eta,
+                 std::span<double>(Xi));
     } else {
-      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
-                        m, N, args.H, args.xi0, args.eta,
-                        std::span<double>(XI));
+      rb.compute(std::span<const double>(BH), std::span<const double>(time),
+                 m, N, args.H, args.xi0, args.eta, std::span<double>(Xi));
     }
     const auto t1 = std::chrono::high_resolution_clock::now();
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
-    // Sample means at a few indices
-    std::vector<std::size_t> idxs{N / 4, N / 2, N - 1};
-
-    std::cout << std::fixed << std::setprecision(6);
-    std::cout << "Rough Bergomi Factor Generation Results\n";
-    std::cout << "======================================\n";
-    std::cout << "Paths: " << m << ", Steps: " << N << "\n";
-    std::cout << "T: " << args.T << ", H: " << args.H << ", dt: " << dt << "\n";
-    std::cout << "Seed: " << args.seed << "\n";
-    std::cout << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n";
-    std::cout << "Rho: " << args.rho << "\n";
-    std::cout << "Eta: " << args.eta << "\n";
-    std::cout << "xi0(t): beta0=" << args.beta0
+    // Diagnostics
+    std::vector<std::size_t> idxs = {N/4, N/2, N-1};
+    std::cout << "Rough Bergomi Factor Generation\n"
+              << "===============================\n"
+              << "Paths: " << m << ", Steps: " << N << "\n"
+              << "T: " << args.T << ", H: " << args.H << ", dt: " << dt << "\n"
+              << "Seed: " << args.seed << "\n"
+              << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n"
+              << "Rho: " << args.rho << "\n"
+              << "Eta: " << args.eta << "\n"
+              << "xi0(t): beta0=" << args.beta0
               << ", beta1=" << args.beta1
               << ", beta2=" << args.beta2
               << ", tau1="  << args.tau1
-              << ", tau2="  << args.tau2 << "\n";
-    std::cout << "\nElapsed time: " << ms << " ms\n\n";
+              << ", tau2="  << args.tau2 << "\n\n"
+              << "Elapsed time: " << ms << " ms\n\n";
 
     for (std::size_t idx : idxs) {
       double sum = 0.0;
-      for (std::size_t p = 0; p < m; ++p) sum += XI[p * N + idx];
-      const double mean = sum / static_cast<double>(m);
+      for (std::size_t p = 0; p < m; ++p) sum += Xi[p * N + idx];
+      const double mean = sum / double(m);
       const double t = time[idx + 1];
-      const double theory = use_curve ? (args.beta0 + args.beta1 * std::exp(-t / args.tau1)
-                                        + args.beta2 * (t / args.tau2) * std::exp(-t / args.tau2))
-                                      : args.xi0;
+      const double theory = use_curve
+          ? (args.beta0 + args.beta1 * std::exp(-t / args.tau1)
+             + args.beta2 * (t / args.tau2) * std::exp(-t / args.tau2))
+          : args.xi0;
       const double err = std::abs(mean - theory);
       std::cout << "t = " << t << ", Mean = " << mean
                 << ", Theory = " << theory << ", Error = " << err << "\n";
     }
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << '\n';
-    std::exit(1);
   }
 }
 
 static void runRBAsset(const CLIArgs& args) {
   try {
-    if (args.n_steps < 2) throw std::invalid_argument("nsteps must be at least 2");
-    if (args.T <= 0.0) throw std::invalid_argument("T must be positive");
-    if (args.H <= 0.0 || args.H >= 1.0) throw std::invalid_argument("H must be in (0,1)");
-    if (args.quad_points < 1) throw std::invalid_argument("quad_points must be at least 1");
-    if (args.S0 <= 0.0) throw std::invalid_argument("S0 must be positive");
-
-    auto time = make_uniform_time(args.n_steps, args.T);
     const std::size_t N = args.n_steps;
     const double dt = args.T / static_cast<double>(N);
 
-    // Build kernel
+    // Time grid
+    std::vector<double> time(N + 1);
+    for (std::size_t i = 0; i <= N; ++i) time[i] = dt * double(i);
+
+    // Kernel (power-law) and Volterra noise -> BH (levels)
     fbm::core::VolterraKernelPowerLaw kernel;
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
-    // Volterra noise (BH levels)
-    fbm::core::VolterraNoise noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
+    fbm::core::VolterraNoise noise(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
     const std::size_t m = args.n_paths;
-
     std::vector<double> dB(m * N), dW(m * N), BH(m * N);
-    noise_gen.sample(dB, dW, BH, m, N, dt, args.seed);
+    noise.sample(dB, dW, BH, m, N, dt, args.seed);
 
-    // dBH increments
-    std::vector<double> dBH(m * N);
-    for (std::size_t p = 0; p < m; ++p) {
-      double prev = 0.0;
-      for (std::size_t i = 0; i < N; ++i) {
-        const double curr = BH[p * N + i];
-        dBH[p * N + i] = curr - prev;
-        prev = curr;
-      }
-    }
-
-    // xi0(t) curve on t_0..t_N
+    // xi0(t) on t_0..t_N
     std::vector<double> xi0t(N + 1, 0.0);
     for (std::size_t i = 0; i <= N; ++i) {
       const double t = time[i];
@@ -491,58 +457,59 @@ static void runRBAsset(const CLIArgs& args) {
     }
     const bool use_curve = (std::abs(args.beta1) > 0.0) || (std::abs(args.beta2) > 0.0) || (args.beta0 != args.xi0);
 
-    // RB variance factors
-    fbm::core::RoughBergomiFactor rb_factor;
-    std::vector<double> XI(m * N);
+    // Xi from BH (levels)
+    fbm::core::RoughBergomiFactor rb;
+    std::vector<double> Xi(m * N);
     if (use_curve) {
-      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
-                        m, N, args.H, std::span<const double>(xi0t),
-                        args.eta, std::span<double>(XI));
+      rb.compute(std::span<const double>(BH), std::span<const double>(time),
+                 m, N, args.H, std::span<const double>(xi0t), args.eta,
+                 std::span<double>(Xi));
     } else {
-      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
-                        m, N, args.H, args.xi0, args.eta, std::span<double>(XI));
+      rb.compute(std::span<const double>(BH), std::span<const double>(time),
+                 m, N, args.H, args.xi0, args.eta, std::span<double>(Xi));
     }
 
-    // Evolve asset paths
+    // Evolve asset with Xi and dW
     std::vector<double> S_out(m * (N + 1));
     const auto t0 = std::chrono::high_resolution_clock::now();
-    fbm::core::evolve_rb_asset(std::span<const double>(XI), std::span<const double>(dW),
-                               m, N, dt, args.S0, std::span<double>(S_out));
+    fbm::core::RoughBergomiAssetEuler().evolve(std::span<const double>(time),
+                                               m, std::span<const double>(dB),
+                                               std::span<const double>(dW),
+                                               std::span<const double>(BH),
+                                               std::span<const double>(Xi),
+                                               dt, args.S0,
+                                               std::span<double>(S_out));
     const auto t1 = std::chrono::high_resolution_clock::now();
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
     // Diagnostics
     std::vector<double> log_returns(m);
-    std::size_t positive_count = 0;
+    std::size_t positive = 0;
     for (std::size_t p = 0; p < m; ++p) {
       const double ST = S_out[p * (N + 1) + N];
       log_returns[p] = std::log(ST / args.S0);
-      if (ST > 0.0) ++positive_count;
+      positive += (ST > 0.0) ? 1 : 0;
     }
+    const double sample_mean = std::accumulate(log_returns.begin(), log_returns.end(), 0.0) / double(m);
+    const double ref_mean = -0.5 * args.xi0 * args.T; // only meaningful for constant xi0
+    const double abs_err = std::abs(sample_mean - ref_mean);
+    const double pct_pos = 100.0 * double(positive) / double(m);
 
-    const double sample_mean = std::accumulate(log_returns.begin(), log_returns.end(), 0.0) / static_cast<double>(m);
-    // riferimento semplice (se xi0 costante)
-    const double theoretical_mean = -0.5 * args.xi0 * args.T;
-    const double abs_error = std::abs(sample_mean - theoretical_mean);
-    const double percent_positive = 100.0 * static_cast<double>(positive_count) / static_cast<double>(m);
-
-    std::cout << std::fixed << std::setprecision(6);
-    std::cout << "Rough Bergomi Asset Evolution Results\n";
-    std::cout << "====================================\n";
-    std::cout << "Paths: " << m << ", Steps: " << N << "\n";
-    std::cout << "T: " << args.T << ", H: " << args.H << ", dt: " << dt << "\n";
-    std::cout << "S0: " << args.S0 << ", eta: " << args.eta << ", xi0: " << args.xi0 << "\n";
-    std::cout << "Seed: " << args.seed << "\n";
-    std::cout << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n";
-    std::cout << "Rho: " << args.rho << "\n\n";
-    std::cout << "Elapsed time (factor+asset): " << ms << " ms\n";
-    std::cout << "Mean log-return: " << sample_mean << "\n";
-    std::cout << "Theoretical reference (const xi0): " << theoretical_mean << "\n";
-    std::cout << "Absolute error: " << abs_error << "\n";
-    std::cout << "Paths with S_T > 0: " << percent_positive << "%\n";
+    std::cout << "Rough Bergomi Asset Evolution\n"
+              << "============================\n"
+              << "Paths: " << m << ", Steps: " << N << "\n"
+              << "T: " << args.T << ", H: " << args.H << ", dt: " << dt << "\n"
+              << "S0: " << args.S0 << ", eta: " << args.eta << "\n"
+              << "Seed: " << args.seed << "\n"
+              << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n"
+              << "Rho: " << args.rho << "\n\n"
+              << "Elapsed time (factor+asset): " << ms << " ms\n"
+              << "Mean log-return: " << sample_mean << "\n"
+              << "Theoretical reference (const xi0): " << ref_mean << "\n"
+              << "Absolute error: " << abs_err << "\n"
+              << "Paths with S_T > 0: " << pct_pos << "%\n";
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << '\n';
-    std::exit(1);
   }
 }
 

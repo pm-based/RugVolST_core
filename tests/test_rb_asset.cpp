@@ -49,9 +49,16 @@ TEST_CASE("Rough Bergomi Asset Evolution", "[rb_asset]") {
 
     // Evolve asset paths
     std::vector<double> S_out(m * (N + 1));
-    fbm::core::evolve_rb_asset(std::span<const double>(XI), std::span<const double>(dW),
-                               m, N, dt, S0, std::span<double>(S_out));
-
+    fbm::core::RoughBergomiAssetEuler evolver;
+    evolver.evolve(std::span<const double>(time),
+                   m,
+                   std::span<const double>(dB),
+                   std::span<const double>(dW),
+                   std::span<const double>(BH),
+                   std::span<const double>(XI),
+                   dt,
+                   S0,
+                   std::span<double>(S_out));
     // Test assertions
 
     // 1. All S_out are finite and > 0

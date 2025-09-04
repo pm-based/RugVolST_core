@@ -4,28 +4,31 @@
 
 namespace fbm::core {
 
-void evolve_rb_asset(std::span<const double> XI,
-                     std::span<const double> dW,
-                     std::size_t m,
-                     std::size_t N,
-                     double dt,
-                     double S0,
-                     std::span<double> S_out) noexcept {
+    void RoughBergomiAssetEuler::evolve(std::span<const double> time,
+                                        std::size_t m,
+                                        std::span<const double> dB,
+                                        std::span<const double> dW,
+                                        std::span<const double> BH,
+                                        std::span<const double> Xi,
+                                        double dt,
+                                        double S0,
+                                        std::span<double> S_out) const noexcept {
+        const std::size_t N = time.size() > 0 ? (time.size() - 1) : 0;
+        (void)dB; // unused by design
+        (void)BH; // unused by design
 
-    for (std::size_t p = 0; p < m; ++p) {
-        // Initialize log price and set initial asset price
-        double logS = std::log(S0);
-        S_out[p * (N + 1) + 0] = S0;
+        for (std::size_t p = 0; p < m; ++p) {
+            double logS = std::log(S0);
+            S_out[p * (N + 1) + 0] = S0;
 
-        // Evolve asset price using log-Euler
-        for (std::size_t i = 0; i < N; ++i) {
-            const double xi = XI[p * N + i];
-            const double inc = -0.5 * xi * dt + std::sqrt(std::max(xi, 0.0)) * dW[p * N + i];
-            // Note: dW already has variance dt, so no extra sqrt(dt)
-            logS += inc;
-            S_out[p * (N + 1) + i + 1] = std::exp(logS);
+            for (std::size_t i = 0; i < N; ++i) {
+                const double xi  = Xi[p * N + i];
+                const double vol = std::sqrt(std::max(xi, 0.0));
+                // dW already ~ N(0, dt)
+                logS += (-0.5 * xi * dt) + vol * dW[p * N + i];
+                S_out[p * (N + 1) + (i + 1)] = std::exp(logS);
+            }
         }
     }
-}
 
 } // namespace fbm::core

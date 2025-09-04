@@ -23,6 +23,8 @@ void GBMEuler::evolve(std::span<const double> time,
                        std::span<const double> BH,
                        double S0,
                        std::span<double> S_out) const {
+  (void)dB; // not used in this evolver
+  (void)BH; // not used in this evolver
   const std::size_t N = time.size() - 1;
 
   // Validate input sizes
