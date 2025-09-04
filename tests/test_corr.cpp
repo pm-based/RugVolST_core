@@ -25,7 +25,7 @@ TEST_CASE("Correlation between dW and dB", "[correlation]") {
     kernel.build(time, H, 16, K_small);
 
     // Create noise generator with correlation
-    fbm::core::VolterraNoiseGEMM noise_gen(std::move(K_small), N, rho, false);
+    fbm::core::VolterraNoise noise_gen(std::move(K_small), N, rho, false);
 
     // Generate correlated noise
     std::vector<double> dB(P * N), dW(P * N), BH(P * N);

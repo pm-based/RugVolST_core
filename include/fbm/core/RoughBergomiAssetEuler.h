@@ -7,7 +7,7 @@ namespace fbm::core {
 // Evolve asset paths under rough Bergomi using log-Euler.
 // Inputs:
 // - XI:  size m*N, variance factors per (path, step)
-// - dW:  size m*N, Brownian increments with Var=dt (from VolterraNoiseGEMM)
+// - dW:  size m*N, Brownian increments with Var=dt (from VolterraNoise)
 // - m:   number of paths
 // - N:   time steps
 // - dt:  step size T/N

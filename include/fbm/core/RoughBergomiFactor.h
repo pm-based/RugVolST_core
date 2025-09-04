@@ -2,44 +2,36 @@
 
 #include <span>
 #include <cstddef>
-#include <stdexcept>
 
 namespace fbm::core {
 
-    // RB_Factor
-    // ---------
-    // Computes Rough Bergomi variance factor xi_t on a uniform grid using fractional Brownian motion BH.
-    //
-    // The variance factor follows:
-    // xi_t[i] = xi0 * exp( eta * BH[:,i] - 0.5 * eta^2 * t[i+1]^{2H} )
-    //
-    // This represents the variance process in the Rough Bergomi model where:
-    // - xi0 is the initial variance level
-    // - eta is the volatility of volatility parameter
-    // - BH is fractional Brownian motion with Hurst parameter H
-    // - The drift adjustment ensures E[xi_t] = xi0
-    class RB_Factor {
+    /// RoughBergomiFactor
+    /// ------------------
+    /// Calcola i fattori di varianza xi_t su griglia uniforme per il modello Rough Bergomi.
+    ///
+    /// Formula per i times t_{i+1}, i=0..N-1:
+    ///   xi_t[i] = xi0(t_{i+1}) * exp( eta * BH_{t_{i+1}} - 0.5 * eta^2 * t_{i+1}^{2H} )
+    /// dove BH_{t} è la fBM (livelli). L’API accetta dBH (incrementi) e ricostruisce i livelli.
+    ///
+    /// Convenzioni I/O (row-major per path):
+    ///   - dBH:  (m_paths * N)  incrementi fBM per passo
+    ///   - time: (N+1)          griglia uniforme con time[0] = 0
+    ///   - XI:   (m_paths * N)  output ai tempi t_1..t_N
+    class RoughBergomiFactor {
     public:
-        // Compute variance factor xi_t on a uniform grid using BH
-        //
-        // Inputs:
-        //   BH:  (m x N) row-major fractional Brownian motion increments
-        //   t:   (N+1) uniform time grid with t[0] = 0
-        //   m:   number of paths
-        //   N:   number of time steps
-        //   H:   Hurst parameter in (0,1)
-        //   xi0: initial variance level > 0
-        //   eta: volatility of volatility >= 0
-        //
-        // Output:
-        //   XI:  (m x N) row-major variance factors, i = 0..N-1 corresponds to t[1..N]
-        void compute(std::span<const double> BH,
-                     std::span<const double> t,
-                     std::size_t m,
-                     std::size_t N,
-                     double H,
-                     double xi0,
-                     double eta,
+        /// Versione con curva xi0(t) fornita su t_0..t_N (N+1 valori).
+        /// Usa soltanto t_1..t_N per costruire XI.
+        void compute(std::span<const double> dBH,
+                     std::span<const double> time,
+                     std::size_t m_paths, std::size_t N,
+                     double H, std::span<const double> xi0t, double eta,
+                     std::span<double> XI) const;
+
+        /// Overload con xi0 costante.
+        void compute(std::span<const double> dBH,
+                     std::span<const double> time,
+                     std::size_t m_paths, std::size_t N,
+                     double H, double xi0, double eta,
                      std::span<double> XI) const;
     };
 

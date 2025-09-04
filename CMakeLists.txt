@@ -21,9 +21,9 @@ add_library(fbm_core
         src/core/GBMEuler.cpp
         src/core/BrownianNoise.cpp
         src/core/VolterraKernelBrownian.cpp
+        src/core/VolterraKernelPowerLaw.cpp
         src/core/VolterraNoise.cpp
         src/core/RoughBergomiFactor.cpp
-        src/core/VolterraKernelPowerLaw.cpp
         src/core/RoughBergomiAssetEuler.cpp
 )
 
@@ -73,6 +73,7 @@ if(FBM_BUILD_TESTS)
             tests/test_rb_factor.cpp
             tests/test_kernel_powerlaw.cpp
             tests/test_rb_asset.cpp
+            tests/test_rb_curve.cpp
             third_party/catch2/catch_amalgamated.cpp
     )
     target_link_libraries(fbm_tests PRIVATE fbm_core)

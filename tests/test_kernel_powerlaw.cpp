@@ -72,7 +72,7 @@ TEST_CASE("VolterraKernelPowerLaw - Power-law kernel for general H", "[kernel_po
             kernel.build(time, H, 16, K);
 
             // Generate fractional Brownian motion using the kernel
-            fbm::core::VolterraNoiseGEMM noise_gen(std::vector<double>(K), N, 0.0, false);
+            fbm::core::VolterraNoise noise_gen(std::vector<double>(K), N, 0.0, false);
             std::vector<double> dB(m * N), dW(m * N), BH(m * N);
             noise_gen.sample(dB, dW, BH, m, N, dt, seed);
 

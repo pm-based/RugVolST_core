@@ -41,8 +41,14 @@ struct CLIArgs {
   bool use_antithetic = false;
   int threads = 0; // 0 = library default
   double rho = 0.0; // correlation between dW and dB
-  double eta = 1.5; // volatility of volatility for rb-factor
-  double xi0 = 0.04; // initial variance level for rb-factor
+  double eta = 1.5; // vol-of-vol
+  double xi0 = 0.04; // shortcut per beta0
+  // xi0(t) = beta0 + beta1*exp(-t/tau1) + beta2*(t/tau2)*exp(-t/tau2)
+  double beta0 = 0.04;
+  double beta1 = 0.0;
+  double beta2 = 0.0;
+  double tau1 = 1.0;
+  double tau2 = 1.0;
 };
 
 static void printUsage() {
@@ -53,28 +59,34 @@ static void printUsage() {
   std::cout << "  rb-noise      Generate Volterra noise BH = dB @ K\n";
   std::cout << "  rb-factor     Generate Rough Bergomi variance factors\n";
   std::cout << "  rb-asset      Generate Rough Bergomi asset paths\n\n";
-  std::cout << "  --npaths N     Number of paths (default varies by command)\n";
-  std::cout << "  --nsteps N     Number of time steps (default varies by command)\n";
-  std::cout << "  --T VALUE      Time horizon (default: 1.0)\n";
-  std::cout << "  --seed N       Random seed (default varies by command)\n";
-  std::cout << "  --help         Show this help message\n\n";
+  std::cout << "Common options:\n";
+  std::cout << "  --npaths N    Number of paths\n";
+  std::cout << "  --nsteps N    Number of time steps\n";
+  std::cout << "  --T VALUE     Time horizon (default: 1.0)\n";
+  std::cout << "  --seed N      Random seed\n";
+  std::cout << "  --help        Show this help message\n\n";
 
   std::cout << "BS options:\n";
-  std::cout << "  --S0 VALUE     Initial price (default: 100.0)\n";
-  std::cout << "  --mu VALUE     Drift (default: 0.0)\n";
-  std::cout << "  --sigma VALUE  Volatility (default: 0.2)\n\n";
+  std::cout << "  --S0 VALUE    Initial price (default: 100.0)\n";
+  std::cout << "  --mu VALUE    Drift (default: 0.0)\n";
+  std::cout << "  --sigma VALUE Volatility (default: 0.2)\n\n";
 
   std::cout << "Kernel / RB-noise / RB-factor / RB-asset options:\n";
-  std::cout << "  --H VALUE      Hurst parameter in (0,1) (default: 0.3 for kernel, 0.5 for others)\n";
-  std::cout << "  --quad N       Quadrature points (default: 64 for kernel, 16 for others)\n";
-  std::cout << "  --antithetic   Use antithetic variates for variance reduction (default: off)\n";
-  std::cout << "  --rho VALUE    Correlation between dW and dB in (-1,1) (default: 0.0)\n";
+  std::cout << "  --H VALUE     Hurst parameter in (0,1)\n";
+  std::cout << "  --quad N      Quadrature points (kernel build)\n";
+  std::cout << "  --antithetic  Use antithetic variates\n";
+  std::cout << "  --rho VALUE   Corr(dW,dB) in (-1,1)\n";
 #if defined(FBM_USE_OPENMP)
-  std::cout << "  --threads N    Number of OpenMP threads (default: 0 = library default)\n";
+  std::cout << "  --threads N   OpenMP threads (0 = lib default)\n";
 #endif
   std::cout << "\nRB-factor / RB-asset specific options:\n";
-  std::cout << "  --eta VALUE    Volatility of volatility parameter (default: 1.5)\n";
-  std::cout << "  --xi0 VALUE    Initial variance level (default: 0.04)\n";
+  std::cout << "  --eta VALUE   Volatility of volatility (>=0)\n";
+  std::cout << "  --xi0 VALUE   Constant xi0 (alias for --beta0)\n";
+  std::cout << "  --beta0 VAL   xi0 base level\n";
+  std::cout << "  --beta1 VAL   exp decay weight\n";
+  std::cout << "  --beta2 VAL   hump weight\n";
+  std::cout << "  --tau1 VAL    exp decay time\n";
+  std::cout << "  --tau2 VAL    hump time\n";
 }
 
 static CLIArgs parseArgs(int argc, char* argv[]) {
@@ -86,7 +98,8 @@ static CLIArgs parseArgs(int argc, char* argv[]) {
   }
 
   const std::string command = argv[1];
-  if (command != "bs" && command != "kernel" && command != "rb-noise" && command != "rb-factor" && command != "rb-asset") {
+  if (command != "bs" && command != "kernel" && command != "rb-noise" &&
+      command != "rb-factor" && command != "rb-asset") {
     std::cerr << "Error: Unknown command '" << command << "'\n";
     args.show_help = true;
     return args;
@@ -97,63 +110,43 @@ static CLIArgs parseArgs(int argc, char* argv[]) {
   if (command == "kernel") {
     args.n_steps = 100;
   } else if (command == "rb-noise") {
-    args.n_paths = 20000;
-    args.n_steps = 256;
-    args.H = 0.5;
-    args.quad_points = 16;
-    args.seed = 7;
-  } else if (command == "rb-factor") {
-    args.n_paths = 20000;
-    args.n_steps = 256;
-    args.H = 0.5;
-    args.quad_points = 16;
-    args.seed = 7;
-  } else if (command == "rb-asset") {
-    args.n_paths = 20000;
-    args.n_steps = 256;
-    args.H = 0.5;
-    args.quad_points = 16;
-    args.eta = 1.5;
-    args.xi0 = 0.04;
-    args.S0 = 100.0;
-    args.seed = 7;
+    args.n_paths = 20000; args.n_steps = 256;
+    args.H = 0.5; args.quad_points = 16; args.seed = 7;
+  } else if (command == "rb-factor" || command == "rb-asset") {
+    args.n_paths = 20000; args.n_steps = 256;
+    args.H = 0.5; args.quad_points = 16;
+    args.eta = 1.5; args.xi0 = 0.04; args.beta0 = args.xi0; args.seed = 7;
+    if (command == "rb-asset") args.S0 = 100.0;
   }
 
   // Parse options
   for (int i = 2; i < argc; ++i) {
     std::string arg = argv[i];
-    if (arg == "--help") {
-      args.show_help = true;
-      return args;
-    } else if (arg == "--npaths" && i + 1 < argc) {
-      args.n_paths = std::stoull(argv[++i]);
-    } else if (arg == "--nsteps" && i + 1 < argc) {
-      args.n_steps = std::stoull(argv[++i]);
-    } else if (arg == "--S0" && i + 1 < argc) {
-      args.S0 = std::stod(argv[++i]);
-    } else if (arg == "--mu" && i + 1 < argc) {
-      args.mu = std::stod(argv[++i]);
-    } else if (arg == "--sigma" && i + 1 < argc) {
-      args.sigma = std::stod(argv[++i]);
-    } else if (arg == "--T" && i + 1 < argc) {
-      args.T = std::stod(argv[++i]);
-    } else if (arg == "--seed" && i + 1 < argc) {
-      args.seed = std::stoull(argv[++i]);
-    } else if (arg == "--H" && i + 1 < argc) {
-      args.H = std::stod(argv[++i]);
-    } else if (arg == "--quad" && i + 1 < argc) {
-      args.quad_points = std::stoull(argv[++i]);
-    } else if (arg == "--antithetic") {
-      args.use_antithetic = true;
-    } else if (arg == "--threads" && i + 1 < argc) {
-      args.threads = std::stoi(argv[++i]);
-    } else if (arg == "--rho" && i + 1 < argc) {
-      args.rho = std::stod(argv[++i]);
-    } else if (arg == "--eta" && i + 1 < argc) {
-      args.eta = std::stod(argv[++i]);
-    } else if (arg == "--xi0" && i + 1 < argc) {
-      args.xi0 = std::stod(argv[++i]);
-    } else {
+    auto need = [&](int k=1){ return i + k < argc; };
+
+    if (arg == "--help") { args.show_help = true; return args; }
+    else if (arg == "--npaths" && need()) { args.n_paths = std::stoull(argv[++i]); }
+    else if (arg == "--nsteps" && need()) { args.n_steps = std::stoull(argv[++i]); }
+    else if (arg == "--S0" && need())     { args.S0 = std::stod(argv[++i]); }
+    else if (arg == "--mu" && need())     { args.mu = std::stod(argv[++i]); }
+    else if (arg == "--sigma" && need())  { args.sigma = std::stod(argv[++i]); }
+    else if (arg == "--T" && need())      { args.T = std::stod(argv[++i]); }
+    else if (arg == "--seed" && need())   { args.seed = std::stoull(argv[++i]); }
+    else if (arg == "--H" && need())      { args.H = std::stod(argv[++i]); }
+    else if (arg == "--quad" && need())   { args.quad_points = std::stoull(argv[++i]); }
+    else if (arg == "--antithetic")       { args.use_antithetic = true; }
+#if defined(FBM_USE_OPENMP)
+    else if (arg == "--threads" && need()){ args.threads = std::stoi(argv[++i]); }
+#endif
+    else if (arg == "--rho" && need())    { args.rho = std::stod(argv[++i]); }
+    else if (arg == "--eta" && need())    { args.eta = std::stod(argv[++i]); }
+    else if (arg == "--xi0" && need())    { args.xi0 = args.beta0 = std::stod(argv[++i]); }
+    else if (arg == "--beta0" && need())  { args.beta0 = std::stod(argv[++i]); }
+    else if (arg == "--beta1" && need())  { args.beta1 = std::stod(argv[++i]); }
+    else if (arg == "--beta2" && need())  { args.beta2 = std::stod(argv[++i]); }
+    else if (arg == "--tau1" && need())   { args.tau1 = std::stod(argv[++i]); }
+    else if (arg == "--tau2" && need())   { args.tau2 = std::stod(argv[++i]); }
+    else {
       std::cerr << "Error: Unknown or incomplete argument '" << arg << "'\n";
       args.show_help = true;
       return args;
@@ -276,9 +269,8 @@ static void runRBNoiseTest(const CLIArgs& args) {
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
-    // Volterra noise generator with antithetic flag
-    fbm::core::VolterraNoiseGEMM noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
-    // Generate noise
+    // Volterra noise generator
+    fbm::core::VolterraNoise noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
 
     const std::size_t m = args.n_paths;
     std::vector<double> dB(m * N), dW(m * N), BH(m * N);
@@ -323,11 +315,9 @@ static void runRBNoiseTest(const CLIArgs& args) {
                 << ", RelErr = " << rel_err << "\n";
     }
 
-    // If antithetic is enabled, compute variance reduction ratio at last index
     std::cout << "\nCorrelation Analysis (dW vs dB):\n";
     std::cout << "================================\n";
     for (std::size_t idx : idxs) {
-      // Compute sample means
       double mean_dB = 0.0, mean_dW = 0.0;
       for (std::size_t p = 0; p < m; ++p) {
         mean_dB += dB[p * N + idx];
@@ -336,7 +326,6 @@ static void runRBNoiseTest(const CLIArgs& args) {
       mean_dB /= static_cast<double>(m);
       mean_dW /= static_cast<double>(m);
 
-      // Compute covariance and variances
       double cov = 0.0, var_dB = 0.0, var_dW = 0.0;
       for (std::size_t p = 0; p < m; ++p) {
         const double dB_dev = dB[p * N + idx] - mean_dB;
@@ -349,7 +338,6 @@ static void runRBNoiseTest(const CLIArgs& args) {
       var_dB /= static_cast<double>(m - 1);
       var_dW /= static_cast<double>(m - 1);
 
-      // Compute Pearson correlation
       const double corr_hat = cov / std::sqrt(var_dB * var_dW);
       std::cout << "t = " << time[idx + 1] << ", corr_hat = " << corr_hat << "\n";
     }
@@ -375,19 +363,49 @@ static void runRBFactor(const CLIArgs& args) {
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
-    // Generate Volterra noise (BH = dB @ K)
-    fbm::core::VolterraNoiseGEMM noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
+    // Generate Volterra noise (BH levels)
+    fbm::core::VolterraNoise noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
     const std::size_t m = args.n_paths;
     std::vector<double> dB(m * N), dW(m * N), BH(m * N);
     noise_gen.sample(dB, dW, BH, m, N, dt, args.seed);
 
+    // Convert BH levels -> increments dBH
+    std::vector<double> dBH(m * N);
+    for (std::size_t p = 0; p < m; ++p) {
+      double prev = 0.0;
+      for (std::size_t i = 0; i < N; ++i) {
+        const double curr = BH[p * N + i];
+        dBH[p * N + i] = curr - prev;
+        prev = curr;
+      }
+    }
+
+    // xi0(t) curve on grid t_0..t_N (N+1 values)
+    std::vector<double> xi0t(N + 1, 0.0);
+    for (std::size_t i = 0; i <= N; ++i) {
+      const double t = time[i];
+      xi0t[i] = args.beta0
+              + args.beta1 * std::exp(-t / args.tau1)
+              + args.beta2 * (t / args.tau2) * std::exp(-t / args.tau2);
+    }
+
+    // Decide constant vs curve
+    const bool use_curve = (std::abs(args.beta1) > 0.0) || (std::abs(args.beta2) > 0.0) || (args.beta0 != args.xi0);
+
     // Compute Rough Bergomi variance factors
-    fbm::core::RB_Factor rb_factor;
+    fbm::core::RoughBergomiFactor rb_factor;
     std::vector<double> XI(m * N);
 
     const auto t0 = std::chrono::high_resolution_clock::now();
-    rb_factor.compute(std::span<const double>(BH), std::span<const double>(time),
-                      m, N, args.H, args.xi0, args.eta, std::span<double>(XI));
+    if (use_curve) {
+      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
+                        m, N, args.H, std::span<const double>(xi0t),
+                        args.eta, std::span<double>(XI));
+    } else {
+      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
+                        m, N, args.H, args.xi0, args.eta,
+                        std::span<double>(XI));
+    }
     const auto t1 = std::chrono::high_resolution_clock::now();
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
@@ -403,18 +421,24 @@ static void runRBFactor(const CLIArgs& args) {
     std::cout << "Antithetic: " << (args.use_antithetic ? "ON" : "OFF") << "\n";
     std::cout << "Rho: " << args.rho << "\n";
     std::cout << "Eta: " << args.eta << "\n";
-    std::cout << "Xi0: " << args.xi0 << "\n";
+    std::cout << "xi0(t): beta0=" << args.beta0
+              << ", beta1=" << args.beta1
+              << ", beta2=" << args.beta2
+              << ", tau1="  << args.tau1
+              << ", tau2="  << args.tau2 << "\n";
     std::cout << "\nElapsed time: " << ms << " ms\n\n";
 
     for (std::size_t idx : idxs) {
       double sum = 0.0;
-      for (std::size_t p = 0; p < m; ++p) {
-        sum += XI[p * N + idx];
-      }
+      for (std::size_t p = 0; p < m; ++p) sum += XI[p * N + idx];
       const double mean = sum / static_cast<double>(m);
-      const double theory = args.xi0; // E[xi_t] = xi0 due to drift adjustment
+      const double t = time[idx + 1];
+      const double theory = use_curve ? (args.beta0 + args.beta1 * std::exp(-t / args.tau1)
+                                        + args.beta2 * (t / args.tau2) * std::exp(-t / args.tau2))
+                                      : args.xi0;
       const double err = std::abs(mean - theory);
-      std::cout << "t = " << time[idx + 1] << ", Mean = " << mean << ", Error = " << err << "\n";
+      std::cout << "t = " << t << ", Mean = " << mean
+                << ", Theory = " << theory << ", Error = " << err << "\n";
     }
   } catch (const std::exception& e) {
     std::cerr << "Error: " << e.what() << '\n';
@@ -439,17 +463,45 @@ static void runRBAsset(const CLIArgs& args) {
     std::vector<double> K_small(N * N, 0.0);
     kernel.build(time, args.H, args.quad_points, K_small);
 
-    // Generate Volterra noise (BH = dB @ K)
-    fbm::core::VolterraNoiseGEMM noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
+    // Volterra noise (BH levels)
+    fbm::core::VolterraNoise noise_gen(std::vector<double>(K_small), N, args.rho, args.use_antithetic);
     const std::size_t m = args.n_paths;
+
     std::vector<double> dB(m * N), dW(m * N), BH(m * N);
     noise_gen.sample(dB, dW, BH, m, N, dt, args.seed);
 
-    // Compute Rough Bergomi variance factors
-    fbm::core::RB_Factor rb_factor;
+    // dBH increments
+    std::vector<double> dBH(m * N);
+    for (std::size_t p = 0; p < m; ++p) {
+      double prev = 0.0;
+      for (std::size_t i = 0; i < N; ++i) {
+        const double curr = BH[p * N + i];
+        dBH[p * N + i] = curr - prev;
+        prev = curr;
+      }
+    }
+
+    // xi0(t) curve on t_0..t_N
+    std::vector<double> xi0t(N + 1, 0.0);
+    for (std::size_t i = 0; i <= N; ++i) {
+      const double t = time[i];
+      xi0t[i] = args.beta0
+              + args.beta1 * std::exp(-t / args.tau1)
+              + args.beta2 * (t / args.tau2) * std::exp(-t / args.tau2);
+    }
+    const bool use_curve = (std::abs(args.beta1) > 0.0) || (std::abs(args.beta2) > 0.0) || (args.beta0 != args.xi0);
+
+    // RB variance factors
+    fbm::core::RoughBergomiFactor rb_factor;
     std::vector<double> XI(m * N);
-    rb_factor.compute(std::span<const double>(BH), std::span<const double>(time),
-                      m, N, args.H, args.xi0, args.eta, std::span<double>(XI));
+    if (use_curve) {
+      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
+                        m, N, args.H, std::span<const double>(xi0t),
+                        args.eta, std::span<double>(XI));
+    } else {
+      rb_factor.compute(std::span<const double>(dBH), std::span<const double>(time),
+                        m, N, args.H, args.xi0, args.eta, std::span<double>(XI));
+    }
 
     // Evolve asset paths
     std::vector<double> S_out(m * (N + 1));
@@ -459,7 +511,7 @@ static void runRBAsset(const CLIArgs& args) {
     const auto t1 = std::chrono::high_resolution_clock::now();
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
 
-    // Compute diagnostics
+    // Diagnostics
     std::vector<double> log_returns(m);
     std::size_t positive_count = 0;
     for (std::size_t p = 0; p < m; ++p) {
@@ -469,6 +521,7 @@ static void runRBAsset(const CLIArgs& args) {
     }
 
     const double sample_mean = std::accumulate(log_returns.begin(), log_returns.end(), 0.0) / static_cast<double>(m);
+    // riferimento semplice (se xi0 costante)
     const double theoretical_mean = -0.5 * args.xi0 * args.T;
     const double abs_error = std::abs(sample_mean - theoretical_mean);
     const double percent_positive = 100.0 * static_cast<double>(positive_count) / static_cast<double>(m);
@@ -484,7 +537,7 @@ static void runRBAsset(const CLIArgs& args) {
     std::cout << "Rho: " << args.rho << "\n\n";
     std::cout << "Elapsed time (factor+asset): " << ms << " ms\n";
     std::cout << "Mean log-return: " << sample_mean << "\n";
-    std::cout << "Theoretical reference: " << theoretical_mean << "\n";
+    std::cout << "Theoretical reference (const xi0): " << theoretical_mean << "\n";
     std::cout << "Absolute error: " << abs_error << "\n";
     std::cout << "Paths with S_T > 0: " << percent_positive << "%\n";
   } catch (const std::exception& e) {
@@ -502,10 +555,7 @@ int main(int argc, char* argv[]) {
   }
 
 #if defined(FBM_USE_OPENMP)
-  // Set OpenMP thread count if specified
-  if (args.threads > 0) {
-    omp_set_num_threads(args.threads);
-  }
+  if (args.threads > 0) omp_set_num_threads(args.threads);
 #endif
 
   if (args.command == "bs") {
@@ -519,6 +569,5 @@ int main(int argc, char* argv[]) {
   } else if (args.command == "rb-asset") {
     runRBAsset(args);
   }
-
   return 0;
 }

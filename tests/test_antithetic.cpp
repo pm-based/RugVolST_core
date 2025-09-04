@@ -28,12 +28,12 @@ TEST_CASE("Antithetic variates reduce variance") {
     kernel.build(t, H, 16, K_small);
 
     // Test with antithetic OFF
-    VolterraNoiseGEMM noise_gen_plain(std::vector<double>(K_small), N, 0.0, false);
+    VolterraNoise noise_gen_plain(std::vector<double>(K_small), N, 0.0, false);
     std::vector<double> dB_plain(P * N), dW_plain(P * N), BH_plain(P * N);
     noise_gen_plain.sample(dB_plain, dW_plain, BH_plain, P, N, dt, seed);
 
     // Test with antithetic ON
-    VolterraNoiseGEMM noise_gen_anti(std::move(K_small), N, 0.0, true);
+    VolterraNoise noise_gen_anti(std::move(K_small), N, 0.0, true);
     std::vector<double> dB_anti(P * N), dW_anti(P * N), BH_anti(P * N);
     noise_gen_anti.sample(dB_anti, dW_anti, BH_anti, P, N, dt, seed);
 

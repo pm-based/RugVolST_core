@@ -33,15 +33,19 @@ TEST_CASE("Rough Bergomi Asset Evolution", "[rb_asset]") {
     kernel.build(time, H, 16, K_small); // Using 16 quad points for test
 
     // Generate Volterra noise
-    fbm::core::VolterraNoiseGEMM noise_gen(std::vector<double>(K_small), N, 0.0, false);
+    fbm::core::VolterraNoise noise_gen(std::vector<double>(K_small), N, 0.0, false);
     std::vector<double> dB(m * N), dW(m * N), BH(m * N);
     noise_gen.sample(dB, dW, BH, m, N, dt, seed);
 
     // Compute variance factors
-    fbm::core::RB_Factor rb_factor;
+    fbm::core::RoughBergomiFactor rb_factor;
     std::vector<double> XI(m * N);
+
+    // Create constant xi0 curve for all time steps
+    std::vector<double> xi0t(N, xi0);
+
     rb_factor.compute(std::span<const double>(BH), std::span<const double>(time),
-                      m, N, H, xi0, eta, std::span<double>(XI));
+                      m, N, H, std::span<const double>(xi0t), eta, std::span<double>(XI));
 
     // Evolve asset paths
     std::vector<double> S_out(m * (N + 1));

@@ -18,7 +18,7 @@
 
 namespace fbm::core {
 
-void VolterraNoiseGEMM::sample(std::span<double> dB,
+void VolterraNoise::sample(std::span<double> dB,
                                std::span<double> dW,
                                std::span<double> BH,
                                std::size_t m_paths,
@@ -88,7 +88,7 @@ void VolterraNoiseGEMM::sample(std::span<double> dB,
 #endif
 }
 
-void VolterraNoiseGEMM::gemm_fallback(std::span<const double> dB,
+void VolterraNoise::gemm_fallback(std::span<const double> dB,
                                       std::span<double> BH,
                                       std::size_t m,
                                       std::size_t N) const {

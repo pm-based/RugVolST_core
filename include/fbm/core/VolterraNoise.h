@@ -10,7 +10,7 @@
 
 namespace fbm::core {
 
-    // VolterraNoiseGEMM
+    // VolterraNoise
     // ------------------
     // Generate Brownian increments dB,dW ~ N(0, dt) and, if requested,
     // compute fractional-noise samples BH = dB @ K_small where K_small is
@@ -30,9 +30,9 @@ namespace fbm::core {
     //  - If BH.size() > 0, it must equal m_paths * N.
     //  - The multiply uses a portable blocked fallback; if FBM_USE_BLAS is
     //    defined at build time, a cblas dgemm path is used instead.
-    class VolterraNoiseGEMM final : public INoise {
+    class VolterraNoise final : public INoise {
     public:
-        VolterraNoiseGEMM(std::vector<double> K_small, std::size_t N, double rho = 0.0, bool use_antithetic = false)
+        VolterraNoise(std::vector<double> K_small, std::size_t N, double rho = 0.0, bool use_antithetic = false)
             : K_small_(std::move(K_small)), N_(N), rho_(rho), use_antithetic_(use_antithetic) {
             if (N_ == 0) throw std::invalid_argument("N must be > 0");
             if (K_small_.size() != N_ * N_) throw std::invalid_argument("K_small size must be N*N");
