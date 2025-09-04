@@ -1,6 +1,6 @@
 #include <catch2/catch_amalgamated.hpp>
 #include <fbm/core/VolterraKernelPowerLaw.h>
-#include <fbm/core/VolterraNoiseGEMM.h>
+#include <fbm/core/VolterraNoise.h>
 #include <vector>
 #include <cmath>
 #include <numeric>

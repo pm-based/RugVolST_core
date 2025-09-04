@@ -1,4 +1,4 @@
-#include "fbm/core/VolterraKernelStub.h"
+#include "fbm/core/VolterraKernelBrownian.h"
 #include <cmath>
 #include <algorithm>
 

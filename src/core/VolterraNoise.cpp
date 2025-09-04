@@ -1,4 +1,4 @@
-#include <fbm/core/VolterraNoiseGEMM.h>
+#include <fbm/core/VolterraNoise.h>
 
 #include <algorithm>
 #include <cmath>

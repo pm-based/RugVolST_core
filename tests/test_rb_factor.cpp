@@ -1,9 +1,9 @@
 #define CATCH_CONFIG_MAIN
 #include <catch2/catch_amalgamated.hpp>
 
-#include <fbm/core/RB_Factor.h>
-#include <fbm/core/VolterraKernelStub.h>
-#include <fbm/core/VolterraNoiseGEMM.h>
+#include <fbm/core/RoughBergomiFactor.h>
+#include <fbm/core/VolterraKernelBrownian.h>
+#include <fbm/core/VolterraNoise.h>
 #include <vector>
 #include <cmath>
 #include <numeric>

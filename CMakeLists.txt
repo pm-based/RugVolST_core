@@ -18,13 +18,13 @@ option(FBM_USE_OPENMP "Enable OpenMP if available" OFF)
 # Library
 add_library(fbm_core
         src/core/Simulator.cpp
-        src/core/GBM_Euler.cpp
+        src/core/GBMEuler.cpp
         src/core/BrownianNoise.cpp
-        src/core/VolterraKernelStub.cpp
-        src/core/VolterraNoiseGEMM.cpp
-        src/core/RB_Factor.cpp
+        src/core/VolterraKernelBrownian.cpp
+        src/core/VolterraNoise.cpp
+        src/core/RoughBergomiFactor.cpp
         src/core/VolterraKernelPowerLaw.cpp
-        src/core/RB_AssetEuler.cpp
+        src/core/RoughBergomiAssetEuler.cpp
 )
 
 target_include_directories(fbm_core PUBLIC ${CMAKE_SOURCE_DIR}/include)

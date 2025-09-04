@@ -7,7 +7,7 @@
 #include <fbm/core/IEvolver.h>
 #include <fbm/core/ISimulator.h>
 #include <fbm/core/Simulator.h>
-#include <fbm/core/GBM_Euler.h>
+#include <fbm/core/GBMEuler.h>
 #include <fbm/core/BrownianNoise.h>
 
 namespace fbm::core {

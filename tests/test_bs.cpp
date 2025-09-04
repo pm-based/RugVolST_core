@@ -4,7 +4,7 @@
 #include <fbm/core/INoise.h>
 #include <fbm/core/IEvolver.h>
 #include <fbm/core/ISimulator.h>
-#include <fbm/core/GBM_Euler.h>
+#include <fbm/core/GBMEuler.h>
 #include <fbm/core/BrownianNoise.h>
 
 #include <vector>
@@ -27,7 +27,7 @@ TEST_CASE("non-uniform grid is rejected") {
 
     // Create simulator
     auto noise = std::make_shared<BrownianNoise>();
-    auto evolver = std::make_shared<GBM_Euler>(0.0, 0.2);
+    auto evolver = std::make_shared<GBMEuler>(0.0, 0.2);
     Simulator simulator(noise, evolver);
 
     // Expect std::invalid_argument to be thrown
@@ -58,7 +58,7 @@ TEST_CASE("GBM mean and log-mean within 3 SE") {
 
     // Create simulator
     auto noise = std::make_shared<BrownianNoise>();
-    auto evolver = std::make_shared<GBM_Euler>(mu, sigma);
+    auto evolver = std::make_shared<GBMEuler>(mu, sigma);
     Simulator simulator(noise, evolver);
 
     // Run simulation

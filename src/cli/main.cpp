@@ -13,14 +13,14 @@
 #include <fbm/core/IEvolver.h>
 #include <fbm/core/ISimulator.h>
 #include <fbm/core/Simulator.h>
-#include <fbm/core/GBM_Euler.h>
+#include <fbm/core/GBMEuler.h>
 #include <fbm/core/BrownianNoise.h>
 #include <fbm/core/IKernel.h>
-#include <fbm/core/VolterraKernelStub.h>
+#include <fbm/core/VolterraKernelBrownian.h>
 #include <fbm/core/VolterraKernelPowerLaw.h>
-#include <fbm/core/VolterraNoiseGEMM.h>
-#include <fbm/core/RB_Factor.h>
-#include <fbm/core/RB_AssetEuler.h>
+#include <fbm/core/VolterraNoise.h>
+#include <fbm/core/RoughBergomiFactor.h>
+#include <fbm/core/RoughBergomiAssetEuler.h>
 
 #if defined(FBM_USE_OPENMP)
 #include <omp.h>
@@ -180,7 +180,7 @@ static void runBlackScholes(const CLIArgs& args) {
     auto time = make_uniform_time(args.n_steps, args.T);
 
     auto noise = std::make_shared<fbm::core::BrownianNoise>();
-    auto evolver = std::make_shared<fbm::core::GBM_Euler>(args.mu, args.sigma);
+    auto evolver = std::make_shared<fbm::core::GBMEuler>(args.mu, args.sigma);
     auto simulator = std::make_shared<fbm::core::Simulator>(noise, evolver);
 
     std::vector<double> S_out(args.n_paths * (args.n_steps + 1));

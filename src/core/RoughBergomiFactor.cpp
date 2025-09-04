@@ -1,4 +1,4 @@
-#include <fbm/core/RB_Factor.h>
+#include <fbm/core/RoughBergomiFactor.h>
 #include <cmath>
 #include <algorithm>
 

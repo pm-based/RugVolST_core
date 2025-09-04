@@ -1,8 +1,8 @@
 #include <iostream>
 #include <vector>
-#include <fbm/core/RB_Factor.h>
-#include <fbm/core/VolterraKernelStub.h>
-#include <fbm/core/VolterraNoiseGEMM.h>
+#include <fbm/core/RoughBergomiFactor.h>
+#include <fbm/core/VolterraKernelBrownian.h>
+#include <fbm/core/VolterraNoise.h>
 
 int main() {
     std::cout << "Starting RB_Factor debug test..." << std::endl;

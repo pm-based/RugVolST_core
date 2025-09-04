@@ -5,18 +5,18 @@
 #include <fbm/core/IEvolver.h>
 #include <fbm/core/ISimulator.h>
 #include <fbm/core/Simulator.h>
-#include <fbm/core/GBM_Euler.h>
+#include <fbm/core/GBMEuler.h>
 #include <fbm/core/BrownianNoise.h>
 
 namespace fbm::core {
 
-GBM_Euler::GBM_Euler(double mu, double sigma) : mu_(mu), sigma_(sigma) {
+GBMEuler::GBMEuler(double mu, double sigma) : mu_(mu), sigma_(sigma) {
   if (sigma_ < 0.0) {
     throw std::invalid_argument("Volatility sigma must be non-negative");
   }
 }
 
-void GBM_Euler::evolve(std::span<const double> time,
+void GBMEuler::evolve(std::span<const double> time,
                        std::size_t m_paths,
                        std::span<const double> dB,
                        std::span<const double> dW,

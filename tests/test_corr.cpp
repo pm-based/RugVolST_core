@@ -1,6 +1,6 @@
 #include <catch2/catch_amalgamated.hpp>
-#include <fbm/core/VolterraNoiseGEMM.h>
-#include <fbm/core/VolterraKernelStub.h>
+#include <fbm/core/VolterraNoise.h>
+#include <fbm/core/VolterraKernelBrownian.h>
 #include <vector>
 #include <cmath>
 

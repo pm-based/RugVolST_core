@@ -2,7 +2,7 @@
 #include <catch2/catch_amalgamated.hpp>
 
 #include <fbm/core/IKernel.h>
-#include <fbm/core/VolterraKernelStub.h>
+#include <fbm/core/VolterraKernelBrownian.h>
 #include <vector>
 #include <stdexcept>
 #include <cmath>

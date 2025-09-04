@@ -1,4 +1,4 @@
-#include "fbm/core/RB_AssetEuler.h"
+#include "fbm/core/RoughBergomiAssetEuler.h"
 #include <cmath>
 #include <algorithm>
 

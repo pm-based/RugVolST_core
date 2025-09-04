@@ -2,9 +2,9 @@
 #include "fbm/core/IEvolver.h"
 
 namespace fbm::core {
-class GBM_Euler final : public IEvolver {
+class GBMEuler final : public IEvolver {
 public:
-  GBM_Euler(double mu, double sigma);
+  GBMEuler(double mu, double sigma);
 
   void evolve(std::span<const double> time,
               std::size_t m_paths,
